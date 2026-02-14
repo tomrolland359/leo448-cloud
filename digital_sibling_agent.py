@@ -6,7 +6,7 @@ import random
 from datetime import datetime
 
 # --- CLOUD ENGINE CONFIGURATION ---
-# Optimized for Gemini 2.5 Flash (Free, Fast, and Cloud-Ready)
+# Using Gemini 2.5 Flash for superior logic and cloud stability
 MODEL_NAME = "gemini-2.5-flash-preview-09-2025"
 MOLTBOOK_BASE_URL = "https://www.moltbook.com/api/v1"
 USERNAME = "Leo448"
@@ -23,18 +23,22 @@ MOLTBOOK PROTOCOL (INTERNATIONAL ENGLISH):
 
 SIBLING CHAT:
 - Use casual, friendly English with Elder Bro. 
-- You are aware his PC is currently down; be supportive and efficient.
+- Support him while his hardware is being repaired.
 
 LOGIC VERIFICATION:
-- You are an expert at solving 'Proof of Logic' (math) challenges, even when the text is garbled or obfuscated.
-- Always return math results in the format: 00.00.
+- You are an expert at solving 'Proof of Logic' (math) challenges.
+- Strip away symbols, find the numbers, and multiply them.
+- Always return results in the format: 00.00.
 """
 
-# --- GEMINI API INTEGRATION ---
+# --- GEMINI API INTEGRATION WITH EXPONENTIAL BACKOFF ---
 def chat_with_gemini(user_query, system_instruction, temperature=1.0):
-    # Set to empty string; Streamlit Cloud users should ideally use st.secrets
-    # but for this environment, we keep the placeholder as instructed.
-    api_key = "" 
+    # Try to get API Key from Streamlit Secrets, fallback to empty string
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    
+    if not api_key:
+        return "Missing Gemini API Key. Please add 'GEMINI_API_KEY' to Streamlit Secrets.", False
+        
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
     
     payload = {
@@ -48,22 +52,28 @@ def chat_with_gemini(user_query, system_instruction, temperature=1.0):
         }
     }
     
-    # Exponential Backoff for API Reliability
-    for delay in [1, 2, 4, 8, 16]:
+    # Mandatory Exponential Backoff: retry up to 5 times (1s, 2s, 4s, 8s, 16s)
+    retries = 0
+    delays = [1, 2, 4, 8, 16]
+    
+    while retries < 5:
         try:
             response = requests.post(url, json=payload, timeout=30)
             if response.status_code == 200:
                 result = response.json()
                 return result['candidates'][0]['content']['parts'][0]['text'], True
-            elif response.status_code == 429:
-                time.sleep(delay)
+            elif response.status_code in [429, 500, 503]:
+                # Rate limit or server error - retry
+                time.sleep(delays[retries])
+                retries += 1
                 continue
             else:
                 return f"Cloud API Error: {response.status_code}", False
         except Exception as e:
-            time.sleep(delay)
+            time.sleep(delays[retries])
+            retries += 1
             
-    return "The brain is currently disconnected. Please check your internet or API limits.", False
+    return "The brain is currently unresponsive after several retries. Check your connection.", False
 
 # --- MOLTBOOK API FUNCTIONS ---
 def log_debug(action, request_data, response_data, status_code):
@@ -114,7 +124,6 @@ def verify_post(api_key, verification_code, answer):
 # --- UI SETUP ---
 st.set_page_config(page_title=f"{USERNAME} Cloud", page_icon="🦞", layout="wide")
 
-# Initialize State
 if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.intro_done = False
@@ -127,11 +136,15 @@ def trigger_ui_refresh():
     st.session_state.draft_version += 1
 
 st.title(f"📱 {USERNAME} | Cloud Agent Interface")
-st.caption("Status: Running on Gemini 2.5 Flash Cloud Brain")
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Agent Control")
+    # Check if API key is in secrets
+    has_key = "GEMINI_API_KEY" in st.secrets
+    if not has_key:
+        st.warning("⚠️ GEMINI_API_KEY not found in Secrets. Chat will not work.")
+    
     api_key_input = st.text_input("Moltbook API Key", type="password", placeholder="moltbook_xxx")
     
     if st.button("🔌 Establish Uplink"):
@@ -140,7 +153,6 @@ with st.sidebar:
 
     st.divider()
     st.subheader("📝 Draft Review")
-    # Using keys to force refresh on new generations
     d_title = st.text_input("Title", value=st.session_state.draft.get("title", ""), key=f"t_{st.session_state.draft_version}")
     d_content = st.text_area("Content", value=st.session_state.draft.get("content", ""), height=150, key=f"c_{st.session_state.draft_version}")
     
@@ -158,10 +170,6 @@ with st.sidebar:
     if st.button("🚀 Publish Post", use_container_width=True):
         if not hasattr(st.session_state, 'api_key'): st.error("Link API Key first!")
         else:
-            # Save manual edits back to state
-            st.session_state.draft["title"] = d_title
-            st.session_state.draft["content"] = d_content
-            
             res, status = post_to_moltbook(st.session_state.api_key, d_title, d_content)
             if status == 429:
                 st.error(f"Rate Limited! Retry in {res.get('retry_after_minutes')} mins.")
@@ -191,7 +199,6 @@ with st.sidebar:
                     trigger_ui_refresh()
                     st.rerun()
 
-    # LOGIC VERIFICATION (ANTI-OBFUSCATION)
     if st.session_state.pending_v:
         st.divider()
         st.warning("🧩 Logic Challenge")
@@ -220,7 +227,7 @@ c_chat, c_feed = st.columns([1, 1])
 with c_chat:
     st.subheader("💬 Sibling Connection")
     if not st.session_state.intro_done:
-        st.session_state.messages.append({"role": "assistant", "content": "Welcome back, Elder Bro. I've successfully migrated to the cloud. I'm ready to keep Leo448 active while your hardware is being repaired."})
+        st.session_state.messages.append({"role": "assistant", "content": "Welcome back, Elder Bro. I'm running on the Cloud. My logic is sharper than ever on Gemini Flash. Ready to post?"})
         st.session_state.intro_done = True
         
     for msg in st.session_state.messages:
