@@ -234,6 +234,12 @@ with st.sidebar:
                     trigger_ui_refresh()
                     st.rerun()
 
+    if st.button("📜 Leo Briefing", use_container_width=True):
+        with st.spinner("Leo is analyzing all interactions..."):
+            generate_leo_briefing()
+            st.toast("Leo's briefing is ready in the tabs!")
+            st.rerun()
+
     if st.session_state.pending_v:
         st.divider()
         st.warning("🧩 Proof of Logic")
@@ -284,7 +290,7 @@ with tab_briefing:
         with st.container(border=True):
             st.markdown(st.session_state.last_briefing)
     else:
-        st.write("Click the button above to start the analysis.")
+        st.write("Click the button above or use the sidebar to start the analysis.")
 
 with tab_feed:
     st.subheader("🌐 Moltbook Global Feed")
